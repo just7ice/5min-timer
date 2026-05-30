@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>삼삼마라 5분 타이머</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Noto+Serif+KR:wght@700;900&family=Playfair+Display:ital,wght@0,900;1,700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+:root {
+  --red: #C0392B;
+  --red2: #E74C3C;
+  --red-dark: #7B241C;
+  --cream: #FDF6EC;
+  --cream2: #F5ECD8;
+  --gold: #D4A017;
+  --ink: #1A0800;
+  --ink2: #5C3317;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Noto Sans KR', sans-serif;
+  background: var(--cream);
+  color: var(--ink);
+  overflow-x: hidden;
+}
+
+/* ── BG texture ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background:
+    radial-gradient(ellipse at 10% 20%, rgba(192,57,43,0.07) 0%, transparent 50%),
+    radial-gradient(ellipse at 90% 80%, rgba(192,57,43,0.05) 0%, transparent 50%);
+  pointer-events: none; z-index: 0;
+}
+
+.page {
+  position: relative; z-index: 1;
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center;
+}
+
+/* ── HEADER ── */
+.header {
+  width: 100%;
+  background: var(--red);
+  padding: 18px 24px 14px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.header::after {
+  content: '';
+  position: absolute; bottom: -1px; left: 0; right: 0;
+  height: 10px;
+  background: var(--cream);
+  border-radius: 50% 50% 0 0 / 10px 10px 0 0;
+  transform: scaleX(1.05);
+}
+.header-brand {
+  font-family: 'Noto Serif KR', serif;
+  font-size: 13px; font-weight: 700;
+  color: rgba(255,255,255,0.75);
+  letter-spacing: 0.25em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.header-title {
+  font-family: 'Noto Sans KR', sans-serif;
+  font-size: 18px; font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.04em;
+}
+
+/* ── STEP REMINDER ── */
+.step-pill {
+  margin: 22px 0 4px;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--red);
+  color: #fff; font-size: 11px; font-weight: 700;
+  padding: 5px 14px; border-radius: 20px;
+  letter-spacing: 0.1em;
+}
+.step-msg {
+  font-size: 13px; color: var(--ink2);
+  text-align: center; line-height: 1.7;
+  padding: 0 32px; margin-bottom: 8px;
+}
+.step-msg strong { color: var(--red); font-weight: 700; }
+
+/* ── TIMER RING ── */
+.timer-wrap {
+  position: relative;
+  width: 240px; height: 240px;
+  margin: 10px auto 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.ring-svg {
+  position: absolute; inset: 0;
+  transform: rotate(-90deg);
+}
+.ring-bg {
+  fill: none;
+  stroke: var(--cream2);
+  stroke-width: 10;
+}
+.ring-progress {
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 10;
+  stroke-linecap: round;
+  stroke-dasharray: 659.7; /* 2π×105 */
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 1s linear, stroke 0.3s;
+}
+.ring-inner {
+  width: 198px; height: 198px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(192,57,43,0.12);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  position: relative; z-index: 1;
+}
+.timer-min {
+  font-family: 'Playfair Display', serif;
+  font-size: 72px; font-weight: 900;
+  color: var(--red);
+  line-height: 1;
+  letter-spacing: -2px;
+}
+.timer-colon {
+  font-family: 'Playfair Display', serif;
+  font-size: 52px; font-weight: 900;
+  color: var(--red);
+  line-height: 1;
+  align-self: flex-start;
+  margin-top: 8px;
+}
+.timer-sec {
+  font-family: 'Playfair Display', serif;
+  font-size: 72px; font-weight: 900;
+  color: var(--red);
+  line-height: 1;
+  letter-spacing: -2px;
+}
+.timer-nums {
+  display: flex; align-items: center; gap: 0;
+}
+.timer-label {
+  font-size: 11px; font-weight: 700;
+  color: var(--ink2); letter-spacing: 0.1em;
+  margin-top: 4px;
+}
+
+/* ── CONTROLS ── */
+.controls {
+  display: flex; gap: 12px;
+  margin: 24px 0 10px;
+}
+.btn {
+  border: none; cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-weight: 700; letter-spacing: 0.05em;
+  border-radius: 14px;
+  transition: transform 0.1s, opacity 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn:active { transform: scale(0.95); opacity: 0.85; }
+.btn-start {
+  width: 160px; height: 56px;
+  font-size: 18px;
+  background: var(--red);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(192,57,43,0.35);
+}
+.btn-reset {
+  width: 56px; height: 56px;
+  font-size: 20px;
+  background: var(--cream2);
+  color: var(--ink2);
+  border: 1.5px solid #DDD0BE;
+}
+
+/* ── STATUS MSG ── */
+.status {
+  font-size: 13px; color: var(--ink2);
+  height: 20px; text-align: center;
+  transition: all 0.3s;
+}
+.status.done { color: var(--red); font-weight: 700; }
+
+/* ── DIVIDER ── */
+.divider {
+  width: 100%; max-width: 360px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 24px 10px;
+}
+.div-line { flex:1; height:1px; background: #DDD0BE; }
+.div-sym { font-size: 13px; color: var(--red); opacity: 0.6; }
+
+/* ── STEPS RECAP ── */
+.recap {
+  width: 100%; max-width: 360px;
+  padding: 0 20px 32px;
+}
+.recap-title {
+  font-size: 11px; font-weight: 700;
+  color: var(--ink2); letter-spacing: 0.12em;
+  text-transform: uppercase; margin-bottom: 10px;
+  padding-left: 2px;
+}
+.recap-steps { display: flex; flex-direction: column; gap: 0; }
+.recap-step {
+  display: flex; gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #EDE3D4;
+}
+.recap-step:last-child { border-bottom: none; }
+.rnum {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--red); color: #fff;
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
+  font-family: 'Playfair Display', serif;
+}
+.rtext { flex: 1; }
+.r-step-label { font-size: 9px; font-weight: 700; color: var(--red); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 2px; }
+.r-step-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.r-step-body { font-size: 11px; color: var(--ink2); line-height: 1.6; }
+.r-step-body .accent { color: var(--red); font-weight: 700; }
+
+/* ── FOOTER ── */
+.footer {
+  width: 100%; background: var(--red-dark);
+  padding: 16px 24px; text-align: center;
+  margin-top: auto;
+}
+.footer-msg {
+  font-family: 'Noto Serif KR', serif;
+  font-size: 13px; font-weight: 700;
+  color: rgba(255,255,255,0.9);
+  line-height: 1.8;
+}
+.footer-sub { font-size: 10px; color: rgba(255,255,255,0.45); margin-top: 4px; letter-spacing: 0.1em; }
+
+/* ── DONE OVERLAY ── */
+.done-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(192,57,43,0.92);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.4s;
+}
+.done-overlay.show { opacity: 1; pointer-events: auto; }
+.done-emoji { font-size: 64px; margin-bottom: 16px; animation: bounce 0.6s ease infinite alternate; }
+@keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+.done-title {
+  font-family: 'Noto Serif KR', serif;
+  font-size: 26px; font-weight: 900;
+  color: #fff; text-align: center;
+  line-height: 1.5; margin-bottom: 10px;
+}
+.done-sub { font-size: 14px; color: rgba(255,255,255,0.8); text-align: center; line-height: 1.8; }
+.btn-done-close {
+  margin-top: 28px;
+  padding: 14px 40px;
+  background: #fff; color: var(--red);
+  border: none; border-radius: 14px;
+  font-size: 15px; font-weight: 700;
+  font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer;
+}
+
+/* ── PULSE on last 10s ── */
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 4px 24px rgba(192,57,43,0.12); }
+  50% { box-shadow: 0 0 0 12px rgba(192,57,43,0.15); }
+}
+.ring-inner.urgent { animation: pulse-red 1s ease-in-out infinite; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="header-brand">SAMSAMMARA</div>
+    <div class="header-title">🍜 비조리 마라탕 조리 타이머</div>
+  </div>
+
+  <div class="step-pill">▶ STEP 2 · 마라의 시간</div>
+  <p class="step-msg">
+    모든 재료를 넣고 <strong>가장 센 불</strong>로<br>
+    딱 <strong>5분</strong>만 끓여주세요!
+  </p>
+
+  <div class="timer-wrap">
+    <svg class="ring-svg" viewBox="0 0 240 240">
+      <circle class="ring-bg" cx="120" cy="120" r="105"/>
+      <circle class="ring-progress" id="ring" cx="120" cy="120" r="105"/>
+    </svg>
+    <div class="ring-inner" id="ring-inner">
+      <div class="timer-nums">
+        <span class="timer-min" id="t-min">05</span>
+        <span class="timer-colon">:</span>
+        <span class="timer-sec" id="t-sec">00</span>
+      </div>
+      <div class="timer-label">MIN · SEC</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-start" id="btn-start" onclick="toggleTimer()">▶ 시작</button>
+    <button class="btn btn-reset" onclick="resetTimer()" title="초기화">↺</button>
+  </div>
+  <div class="status" id="status">버튼을 눌러 타이머를 시작하세요</div>
+
+  <div class="divider">
+    <div class="div-line"></div>
+    <div class="div-sym">✦</div>
+    <div class="div-line"></div>
+  </div>
+
+  <div class="recap">
+    <div class="recap-title">조리 순서 요약</div>
+    <div class="recap-steps">
+      <div class="recap-step">
+        <div class="rnum">1</div>
+        <div class="rtext">
+          <div class="r-step-label">Step 1 · 준비하기</div>
+          <div class="r-step-title">육수 & 땅콩소스 붓기</div>
+          <div class="r-step-body">냄비에 <span class="accent">비법 육수</span>와 <span class="accent">땅콩소스</span>를 함께 부어주세요. 끓기 시작할 때까지 기다리세요.</div>
+        </div>
+      </div>
+      <div class="recap-step">
+        <div class="rnum">2</div>
+        <div class="rtext">
+          <div class="r-step-label">Step 2 · 끓이기</div>
+          <div class="r-step-title">🔥 센 불로 5분!</div>
+          <div class="r-step-body">모든 재료를 한 번에 넣고 <span class="accent">가장 센 불</span>로 <span class="accent">5분</span>간 끓여주세요. 위의 타이머를 활용하세요.</div>
+        </div>
+      </div>
+      <div class="recap-step">
+        <div class="rnum">3</div>
+        <div class="rtext">
+          <div class="r-step-label">Step 3 · 풍미 완성</div>
+          <div class="r-step-title">특제 후첨 소스 넣기</div>
+          <div class="r-step-body">그릇에 옮겨 담은 뒤 <span class="accent">후첨 소스(별도 포장)</span>를 넣고 가볍게 저어주세요. 깊은 풍미가 완성됩니다.</div>
+        </div>
+      </div>
+      <div class="recap-step">
+        <div class="rnum">4</div>
+        <div class="rtext">
+          <div class="r-step-label">Step 4 · 즐기기</div>
+          <div class="r-step-title">맛있게 드세요 🍜</div>
+          <div class="r-step-body">당신의 식탁에서 삼삼마라를 오롯이 즐겨주세요.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-msg">오늘도 삼삼마라와 함께<br>맛있는 하루 보내세요.</div>
+    <div class="footer-sub">SAMSAMMARA · THE FLAVOUR EVEN PARENTS FALL IN LOVE WITH</div>
+  </div>
+</div>
+
+<!-- DONE OVERLAY -->
+<div class="done-overlay" id="done-overlay">
+  <div class="done-emoji">🍜</div>
+  <div class="done-title">5분 완성!</div>
+  <div class="done-sub">재료가 모두 익었어요.<br>이제 <strong style="color:#FFE08A">후첨 소스</strong>를 넣고<br>가볍게 저어주세요.</div>
+  <button class="btn-done-close" onclick="closeDone()">확인</button>
+</div>
+
+<script>
+const TOTAL = 300; // 5분
+let remaining = TOTAL;
+let running = false;
+let interval = null;
+const CIRCUMFERENCE = 2 * Math.PI * 105; // 659.73
+
+const ring = document.getElementById('ring');
+const ringInner = document.getElementById('ring-inner');
+const tMin = document.getElementById('t-min');
+const tSec = document.getElementById('t-sec');
+const btnStart = document.getElementById('btn-start');
+const statusEl = document.getElementById('status');
+const doneOverlay = document.getElementById('done-overlay');
+
+ring.style.strokeDasharray = CIRCUMFERENCE;
+ring.style.strokeDashoffset = 0;
+
+function updateDisplay() {
+  const m = Math.floor(remaining / 60);
+  const s = remaining % 60;
+  tMin.textContent = String(m).padStart(2, '0');
+  tSec.textContent = String(s).padStart(2, '0');
+
+  const progress = remaining / TOTAL;
+  ring.style.strokeDashoffset = CIRCUMFERENCE * (1 - progress);
+
+  // 색상: 마지막 30초는 주황, 10초는 더 진한 빨강
+  if (remaining <= 10) {
+    ring.style.stroke = '#922B21';
+    ringInner.classList.add('urgent');
+  } else if (remaining <= 30) {
+    ring.style.stroke = '#E67E22';
+    ringInner.classList.remove('urgent');
+  } else {
+    ring.style.stroke = '#C0392B';
+    ringInner.classList.remove('urgent');
+  }
+}
+
+function toggleTimer() {
+  if (remaining === 0) return;
+  if (running) {
+    pauseTimer();
+  } else {
+    startTimer();
+  }
+}
+
+function startTimer() {
+  running = true;
+  btnStart.textContent = '⏸ 일시정지';
+  statusEl.textContent = '🔥 지금 끓이는 중...';
+  statusEl.classList.remove('done');
+  interval = setInterval(() => {
+    remaining--;
+    updateDisplay();
+    if (remaining <= 0) {
+      clearInterval(interval);
+      running = false;
+      btnStart.textContent = '▶ 시작';
+      statusEl.textContent = '완성! 후첨 소스를 넣어주세요 🎉';
+      statusEl.classList.add('done');
+      ringInner.classList.remove('urgent');
+      ring.style.stroke = '#27AE60';
+      // vibrate
+      if (navigator.vibrate) navigator.vibrate([400, 100, 400, 100, 400]);
+      setTimeout(() => doneOverlay.classList.add('show'), 400);
+    }
+  }, 1000);
+}
+
+function pauseTimer() {
+  running = false;
+  clearInterval(interval);
+  btnStart.textContent = '▶ 계속';
+  statusEl.textContent = '일시정지됨';
+}
+
+function resetTimer() {
+  running = false;
+  clearInterval(interval);
+  remaining = TOTAL;
+  btnStart.textContent = '▶ 시작';
+  statusEl.textContent = '버튼을 눌러 타이머를 시작하세요';
+  statusEl.classList.remove('done');
+  ringInner.classList.remove('urgent');
+  ring.style.stroke = '#C0392B';
+  updateDisplay();
+}
+
+function closeDone() {
+  doneOverlay.classList.remove('show');
+  resetTimer();
+}
+
+updateDisplay();
+</script>
+</body>
+</html>
