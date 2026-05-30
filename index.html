@@ -381,6 +381,59 @@ body::before {
 </div>
 
 <script>
+
+// ── WAKE LOCK + SILENT AUDIO FALLBACK ──
+let wakeLock = null;
+let silentAudio = null;
+
+function createSilentAudio() {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const buf = ctx.createBuffer(1, ctx.sampleRate * 10, ctx.sampleRate);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  src.connect(ctx.destination);
+  src.start();
+  return { ctx, src };
+}
+
+async function requestWakeLock() {
+  // 1) Wake Lock API 시도
+  if ('wakeLock' in navigator) {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      console.log('[WakeLock] 활성화');
+      wakeLock.addEventListener('release', () => {
+        // 페이지 숨김 후 다시 보일 때 재요청
+        if (running) requestWakeLock();
+      });
+      return;
+    } catch (e) {
+      console.warn('[WakeLock] 실패, 오디오 폴백 사용', e);
+    }
+  }
+  // 2) 폴백: 무음 오디오 루프
+  try {
+    if (!silentAudio) silentAudio = createSilentAudio();
+    console.log('[SilentAudio] 활성화');
+  } catch (e) {
+    console.warn('[SilentAudio] 실패', e);
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release(); wakeLock = null; }
+  if (silentAudio) {
+    try { silentAudio.src.stop(); silentAudio.ctx.close(); } catch(e){}
+    silentAudio = null;
+  }
+}
+
+// 페이지 다시 보일 때 Wake Lock 재요청
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && running) requestWakeLock();
+});
+
 const TOTAL = 300; // 5분
 let remaining = TOTAL;
 let running = false;
@@ -431,6 +484,7 @@ function toggleTimer() {
 
 function startTimer() {
   running = true;
+  requestWakeLock();
   btnStart.textContent = '⏸ 일시정지';
   statusEl.textContent = '🔥 지금 끓이는 중...';
   statusEl.classList.remove('done');
@@ -455,6 +509,7 @@ function startTimer() {
 function pauseTimer() {
   running = false;
   clearInterval(interval);
+  releaseWakeLock();
   btnStart.textContent = '▶ 계속';
   statusEl.textContent = '일시정지됨';
 }
@@ -462,6 +517,7 @@ function pauseTimer() {
 function resetTimer() {
   running = false;
   clearInterval(interval);
+  releaseWakeLock();
   remaining = TOTAL;
   btnStart.textContent = '▶ 시작';
   statusEl.textContent = '버튼을 눌러 타이머를 시작하세요';
