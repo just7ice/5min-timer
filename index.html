@@ -445,7 +445,44 @@ function finishTimer() {
   ringInner.classList.remove('urgent');
   ring.style.stroke = '#27AE60';
   if (navigator.vibrate) navigator.vibrate([400, 100, 400, 100, 400]);
+  playAlarm();
   setTimeout(() => doneOverlay.classList.add('show'), 400);
+}
+
+// ── 알람 사운드 ──
+// AudioContext를 시작 버튼 터치 시점에 미리 생성 (아이폰 정책 대응)
+let audioCtx = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // 아이폰: 터치 이벤트로 AudioContext를 resume 상태로 만들어둠
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playAlarm() {
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  // 3번 반복 울리는 알람음 (딩-딩-딩)
+  const beeps = [0, 0.45, 0.9];
+  beeps.forEach(offset => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime + offset);
+    osc.frequency.setValueAtTime(1100, audioCtx.currentTime + offset + 0.1);
+
+    gain.gain.setValueAtTime(0, audioCtx.currentTime + offset);
+    gain.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + offset + 0.02);
+    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + offset + 0.38);
+
+    osc.start(audioCtx.currentTime + offset);
+    osc.stop(audioCtx.currentTime + offset + 0.4);
+  });
 }
 
 function toggleTimer() {
@@ -455,7 +492,7 @@ function toggleTimer() {
 
 function startTimer() {
   running = true;
-  // 시작 시각 = 지금 - 이미 경과한 시간
+  initAudio(); // 터치 시점에 AudioContext 초기화 (아이폰 정책 대응)
   startedAt = Date.now() - elapsedAtPause * 1000;
   btnStart.textContent = '⏸ 일시정지';
   statusEl.textContent = '🔥 지금 끓이는 중...';
