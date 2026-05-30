@@ -381,65 +381,14 @@ body::before {
 </div>
 
 <script>
-
-// ── WAKE LOCK + SILENT AUDIO FALLBACK ──
-let wakeLock = null;
-let silentAudio = null;
-
-function createSilentAudio() {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const buf = ctx.createBuffer(1, ctx.sampleRate * 10, ctx.sampleRate);
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.loop = true;
-  src.connect(ctx.destination);
-  src.start();
-  return { ctx, src };
-}
-
-async function requestWakeLock() {
-  // 1) Wake Lock API 시도
-  if ('wakeLock' in navigator) {
-    try {
-      wakeLock = await navigator.wakeLock.request('screen');
-      console.log('[WakeLock] 활성화');
-      wakeLock.addEventListener('release', () => {
-        // 페이지 숨김 후 다시 보일 때 재요청
-        if (running) requestWakeLock();
-      });
-      return;
-    } catch (e) {
-      console.warn('[WakeLock] 실패, 오디오 폴백 사용', e);
-    }
-  }
-  // 2) 폴백: 무음 오디오 루프
-  try {
-    if (!silentAudio) silentAudio = createSilentAudio();
-    console.log('[SilentAudio] 활성화');
-  } catch (e) {
-    console.warn('[SilentAudio] 실패', e);
-  }
-}
-
-function releaseWakeLock() {
-  if (wakeLock) { wakeLock.release(); wakeLock = null; }
-  if (silentAudio) {
-    try { silentAudio.src.stop(); silentAudio.ctx.close(); } catch(e){}
-    silentAudio = null;
-  }
-}
-
-// 페이지 다시 보일 때 Wake Lock 재요청
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && running) requestWakeLock();
-});
-
-const TOTAL = 300; // 5분
+const TOTAL = 300;
 let remaining = TOTAL;
 let running = false;
 let interval = null;
-const CIRCUMFERENCE = 2 * Math.PI * 105; // 659.73
+let startedAt = null;   // Date.now() 기준 시작 시각
+let elapsedAtPause = 0; // 일시정지 시점까지 경과 초
 
+const CIRCUMFERENCE = 2 * Math.PI * 105;
 const ring = document.getElementById('ring');
 const ringInner = document.getElementById('ring-inner');
 const tMin = document.getElementById('t-min');
@@ -460,7 +409,6 @@ function updateDisplay() {
   const progress = remaining / TOTAL;
   ring.style.strokeDashoffset = CIRCUMFERENCE * (1 - progress);
 
-  // 색상: 마지막 30초는 주황, 10초는 더 진한 빨강
   if (remaining <= 10) {
     ring.style.stroke = '#922B21';
     ringInner.classList.add('urgent');
@@ -473,43 +421,54 @@ function updateDisplay() {
   }
 }
 
+// ── 핵심: Date.now() 기반 tick ──
+// setInterval은 절전 시 멈추지만, Date.now()는 절전 중에도
+// 실제 시각을 유지하므로 화면이 켜지면 경과 시간을 정확히 계산
+function tick() {
+  if (!running || startedAt === null) return;
+  const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+  remaining = Math.max(0, TOTAL - elapsed);
+  updateDisplay();
+  if (remaining <= 0) {
+    finishTimer();
+  }
+}
+
+function finishTimer() {
+  clearInterval(interval);
+  running = false;
+  startedAt = null;
+  elapsedAtPause = 0;
+  btnStart.textContent = '▶ 시작';
+  statusEl.textContent = '완성! 후첨 소스를 넣어주세요 🎉';
+  statusEl.classList.add('done');
+  ringInner.classList.remove('urgent');
+  ring.style.stroke = '#27AE60';
+  if (navigator.vibrate) navigator.vibrate([400, 100, 400, 100, 400]);
+  setTimeout(() => doneOverlay.classList.add('show'), 400);
+}
+
 function toggleTimer() {
   if (remaining === 0) return;
-  if (running) {
-    pauseTimer();
-  } else {
-    startTimer();
-  }
+  running ? pauseTimer() : startTimer();
 }
 
 function startTimer() {
   running = true;
-  requestWakeLock();
+  // 시작 시각 = 지금 - 이미 경과한 시간
+  startedAt = Date.now() - elapsedAtPause * 1000;
   btnStart.textContent = '⏸ 일시정지';
   statusEl.textContent = '🔥 지금 끓이는 중...';
   statusEl.classList.remove('done');
-  interval = setInterval(() => {
-    remaining--;
-    updateDisplay();
-    if (remaining <= 0) {
-      clearInterval(interval);
-      running = false;
-      btnStart.textContent = '▶ 시작';
-      statusEl.textContent = '완성! 후첨 소스를 넣어주세요 🎉';
-      statusEl.classList.add('done');
-      ringInner.classList.remove('urgent');
-      ring.style.stroke = '#27AE60';
-      // vibrate
-      if (navigator.vibrate) navigator.vibrate([400, 100, 400, 100, 400]);
-      setTimeout(() => doneOverlay.classList.add('show'), 400);
-    }
-  }, 1000);
+  clearInterval(interval);
+  interval = setInterval(tick, 500); // 0.5초마다 체크
 }
 
 function pauseTimer() {
   running = false;
   clearInterval(interval);
-  releaseWakeLock();
+  elapsedAtPause = TOTAL - remaining;
+  startedAt = null;
   btnStart.textContent = '▶ 계속';
   statusEl.textContent = '일시정지됨';
 }
@@ -517,8 +476,9 @@ function pauseTimer() {
 function resetTimer() {
   running = false;
   clearInterval(interval);
-  releaseWakeLock();
   remaining = TOTAL;
+  startedAt = null;
+  elapsedAtPause = 0;
   btnStart.textContent = '▶ 시작';
   statusEl.textContent = '버튼을 눌러 타이머를 시작하세요';
   statusEl.classList.remove('done');
@@ -532,6 +492,26 @@ function closeDone() {
   resetTimer();
 }
 
+// ── 절전 해제 시 자동 보정 ──
+// 아이폰에서 화면이 꺼졌다 켜지면 이 이벤트가 발생
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && running) {
+    tick(); // 즉시 경과 시간 보정
+    clearInterval(interval);
+    interval = setInterval(tick, 500);
+  }
+});
+
+// 카카오톡 인앱브라우저 앞/뒤로 이동 시
+window.addEventListener('pageshow', () => {
+  if (running) {
+    tick();
+    clearInterval(interval);
+    interval = setInterval(tick, 500);
+  }
+});
+
+// 초기 렌더
 updateDisplay();
 </script>
 </body>
